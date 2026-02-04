@@ -1,0 +1,935 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Arbeitszeiterfassung</title>
+
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b1020">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+body{margin:0;background:#0b1020;color:#e8ecff}
+.wrap{max-width:1100px;margin:0 auto;padding:18px}
+.card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:16px}
+.grid{display:grid;gap:12px}
+@media(min-width:980px){.grid{grid-template-columns:1.25fr .75fr}}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+button{border:0;border-radius:12px;padding:12px 14px;font-weight:800;cursor:pointer}
+.start{background:#7CFF6B;color:#0b1020}
+.pause{background:#66D9FF;color:#0b1020}
+.stop{background:#FFCC66;color:#0b1020}
+.ghost{background:transparent;color:#e8ecff;border:1px solid rgba(255,255,255,.16)}
+.smallbtn{padding:8px 10px;border-radius:10px;font-weight:800}
+.danger{color:#ff9aa2}
+button:disabled{opacity:.45;cursor:not-allowed}
+.big{font-size:34px;font-weight:900;letter-spacing:.4px}
+.pill{padding:8px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.2)}
+.muted{color:rgba(232,236,255,.72)}
+table{width:100%;border-collapse:collapse;margin-top:10px}
+th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,.10);text-align:left;vertical-align:top}
+th{color:rgba(232,236,255,.8)}
+.right{text-align:right}
+.hdr{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+hr{border:0;border-top:1px solid rgba(255,255,255,.10);margin:12px 0}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-top:10px}
+.cal .dow{font-size:12px;color:rgba(232,236,255,.65);text-align:center}
+.day{
+  border:1px solid rgba(255,255,255,.10); border-radius:12px; padding:8px;
+  background:rgba(0,0,0,.15); min-height:78px; cursor:pointer;
+}
+.day:hover{border-color:rgba(255,255,255,.22)}
+.day .n{font-weight:900;display:flex;justify-content:space-between;gap:8px}
+.day .t{font-size:12px;color:rgba(232,236,255,.72);margin-top:4px;line-height:1.2}
+.day.out{opacity:.35}
+.badge{font-size:11px;border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:2px 8px}
+.badge.u{background:rgba(102,217,255,.12)}
+.badge.g{background:rgba(255,204,102,.12)}
+.kpi{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kpi .box{border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:10px;background:rgba(0,0,0,.15)}
+.kpi .box .v{font-size:18px;font-weight:900;margin-top:2px}
+.small{font-size:12px}
+
+.modalBack{position:fixed; inset:0; background:rgba(0,0,0,.55);display:none; align-items:center; justify-content:center; padding:18px;}
+.modal{width:min(620px, 100%); background:#0f1630; border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:16px; box-shadow:0 20px 60px rgba(0,0,0,.5);}
+input[type="time"], select{
+  padding:10px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.18);
+  background:rgba(0,0,0,.25); color:#e8ecff;
+}
+.notice{color:#ffcc66; font-size:12px}
+.actionsCol{white-space:nowrap}
+.pos{color:#7CFF6B}
+.neg{color:#ff9aa2}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+  <div class="hdr">
+    <div>
+      <div style="font-weight:900;font-size:18px">Arbeitszeiterfassung</div>
+      <div class="muted small">Start • Pause • Stop + Kalender + Soll/Ist + Saldo</div>
+    </div>
+    <div class="row">
+      <button class="ghost" id="displayBtn">Anzeigeformat</button>
+      <button class="ghost" id="settingsBtn">Sollzeiten</button>
+      <button class="ghost" id="exportBtn">CSV Export</button>
+      <button class="ghost danger" id="resetBtn">Reset</button>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:12px">
+    <!-- Left -->
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <div class="muted">Aktuelle Sitzung</div>
+          <div class="big" id="timer">00:00:00</div>
+          <div class="row" style="margin-top:8px">
+            <span class="pill">Status: <strong id="status">bereit</strong></span>
+            <span class="pill">Heute Ist: <strong id="todayIst">00:00:00</strong></span>
+            <span class="pill">Heute Soll: <strong id="todaySoll">00:00:00</strong></span>
+            <span class="pill">Heute Saldo: <strong id="todaySaldo">00:00:00</strong></span>
+          </div>
+        </div>
+        <div class="row">
+          <button class="start" id="startBtn">Start</button>
+          <button class="pause" id="pauseBtn" disabled>Pause</button>
+          <button class="stop" id="stopBtn" disabled>Stop</button>
+        </div>
+      </div>
+
+      <hr>
+
+      <div class="row" style="justify-content:space-between">
+        <div class="muted">
+          Tag: <strong id="selectedDayLabel">heute</strong>
+          <span class="muted">• Typ:</span>
+          <select id="dayType">
+            <option value="work">Arbeit</option>
+            <option value="vacation">Urlaub</option>
+            <option value="glide">Gleitzeit</option>
+          </select>
+          <span class="muted small" id="lockHint" style="margin-left:8px; display:none">Zeiterfassung gesperrt</span>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Start</th><th>Ende</th><th class="right">Dauer</th><th class="right">Aktionen</th>
+          </tr>
+        </thead>
+        <tbody id="entriesBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Right -->
+    <div class="card">
+      <div class="hdr">
+        <div>
+          <div style="font-weight:900">Kalender</div>
+          <div class="muted small">Tages-Saldo steht unter Ist/Soll</div>
+        </div>
+        <div class="row">
+          <button class="ghost" id="prevMonthBtn">◀</button>
+          <div class="pill"><strong id="monthLabel"></strong></div>
+          <button class="ghost" id="nextMonthBtn">▶</button>
+        </div>
+      </div>
+
+      <div class="cal" id="calendar"></div>
+
+      <hr>
+
+      <div class="kpi">
+        <div class="box">
+          <div class="muted small">Letzte Wochenübersicht</div>
+          <div class="v" id="lastWeekTotal">—</div>
+          <div class="muted small" id="lastWeekMeta">—</div>
+        </div>
+        <div class="box">
+          <div class="muted small">Letzte Monatsübersicht</div>
+          <div class="v" id="lastMonthTotal">—</div>
+          <div class="muted small" id="lastMonthMeta">—</div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px; justify-content:space-between">
+        <button class="ghost" id="showWeeksBtn">Alle Wochen</button>
+        <button class="ghost" id="showMonthsBtn">Alle Monate</button>
+      </div>
+
+      <div id="summaries" style="margin-top:10px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit entry modal -->
+<div class="modalBack" id="editModalBack">
+  <div class="modal">
+    <div style="font-weight:900;font-size:16px">Eintrag bearbeiten</div>
+    <div class="muted small" id="editModalDay"></div>
+
+    <div class="row" style="margin-top:12px">
+      <div style="flex:1; min-width:160px">
+        <div class="muted small">Start</div>
+        <input type="time" id="editStart" step="60">
+      </div>
+      <div style="flex:1; min-width:160px">
+        <div class="muted small">Ende</div>
+        <input type="time" id="editStop" step="60">
+      </div>
+    </div>
+
+    <div class="notice" id="editError" style="margin-top:10px; display:none"></div>
+
+    <div class="row" style="margin-top:14px; justify-content:flex-end">
+      <button class="ghost" id="editCancelBtn">Abbrechen</button>
+      <button class="start" id="editSaveBtn">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modalBack" id="settingsBack">
+  <div class="modal">
+    <div style="font-weight:900;font-size:16px">Soll-Arbeitszeit pro Wochentag</div>
+    <div class="muted small" style="margin-top:4px">Beispiel: Mo–Do 08:45, Fr 05:00, Sa/So 00:00</div>
+
+    <div style="margin-top:12px" class="row">
+      <div style="flex:1; min-width:140px"><div class="muted small">Mo</div><input type="time" id="sollMo" step="60"></div>
+      <div style="flex:1; min-width:140px"><div class="muted small">Di</div><input type="time" id="sollDi" step="60"></div>
+      <div style="flex:1; min-width:140px"><div class="muted small">Mi</div><input type="time" id="sollMi" step="60"></div>
+      <div style="flex:1; min-width:140px"><div class="muted small">Do</div><input type="time" id="sollDo" step="60"></div>
+      <div style="flex:1; min-width:140px"><div class="muted small">Fr</div><input type="time" id="sollFr" step="60"></div>
+      <div style="flex:1; min-width:140px"><div class="muted small">Sa</div><input type="time" id="sollSa" step="60"></div>
+      <div style="flex:1; min-width:140px"><div class="muted small">So</div><input type="time" id="sollSo" step="60"></div>
+    </div>
+
+    <div class="muted small" style="margin-top:10px">
+      Regeln: Urlaub = Saldo 0 • Gleitzeit = Saldo -Soll (Stundenabbau). Bei Urlaub/Gleitzeit ist die Zeiterfassung gesperrt.
+    </div>
+
+    <div class="row" style="margin-top:14px; justify-content:flex-end">
+      <button class="ghost" id="settingsCancel">Abbrechen</button>
+      <button class="start" id="settingsSave">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Display format modal -->
+<div class="modalBack" id="displayBack">
+  <div class="modal">
+    <div style="font-weight:900;font-size:16px">Anzeigeformat</div>
+    <div class="muted small" style="margin-top:4px">Gilt für Kalender, Tabellen und Ist/Soll/Saldo.</div>
+
+    <div class="row" style="margin-top:12px">
+      <label class="pill" style="cursor:pointer">
+        <input type="radio" name="fmt" value="hms" id="fmtHms" />
+        HH:MM:SS
+      </label>
+      <label class="pill" style="cursor:pointer">
+        <input type="radio" name="fmt" value="decimal" id="fmtDec" />
+        Industrieminuten (Dezimalstunden)
+      </label>
+    </div>
+
+    <div class="row" style="margin-top:14px; justify-content:flex-end">
+      <button class="ghost" id="displayCancel">Schließen</button>
+      <button class="start" id="displaySave">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------- helpers ----------
+  const pad = n => String(n).padStart(2,'0');
+
+  const fmtHMS = (ms) => {
+    ms = Math.max(0, Math.floor(ms));
+    const s = Math.floor(ms/1000);
+    const hh = Math.floor(s/3600), mm = Math.floor((s%3600)/60), ss = s%60;
+    return `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+  };
+
+  const fmtHM = (ms) => {
+    ms = Math.max(0, Math.floor(ms));
+    const s = Math.floor(ms/1000);
+    const hh = Math.floor(s/3600), mm = Math.floor((s%3600)/60);
+    return `${pad(hh)}:${pad(mm)}`;
+  };
+
+  // Dezimalstunden (Industrieminuten)
+  const fmtDecHours = (ms) => {
+    const h = (ms || 0) / (60*60*1000);
+    return h.toFixed(2).replace(".", ",") + " h";
+  };
+
+  // YYYY-MM-DD (lokal, stabil)
+  const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+
+  // ✅ Safari/iOS-sicher: KEIN new Date("YYYY-MM-DD...")
+  const parseYmd = (s) => {
+    const [yy, mm, dd] = s.split("-").map(Number);
+    return new Date(yy, mm - 1, dd, 12, 0, 0, 0); // 12:00 vermeidet DST-Kanten
+  };
+
+  const fmtTime = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const sumEntries = (entries) => entries.reduce((a,e)=>a + (e.stop - e.start), 0);
+
+  // weekday index: Mon=0..Sun=6
+  const dowMon0 = (d) => (d.getDay() + 6) % 7;
+
+  const startOfWeek = (d) => {
+    const x = new Date(d);
+    x.setHours(12,0,0,0);
+    x.setDate(x.getDate() - dowMon0(x));
+    return x;
+  };
+  const endOfWeek = (d) => {
+    const s = startOfWeek(d);
+    const e = new Date(s); e.setDate(e.getDate()+6);
+    return e;
+  };
+
+  const monthStart = (d) => new Date(d.getFullYear(), d.getMonth(), 1, 12, 0, 0, 0);
+  const monthKey = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}`;
+
+  const hmToMs = (hm) => {
+    const [h,m] = hm.split(":").map(Number);
+    return ((h*60)+m)*60*1000;
+  };
+  const msToHM = (ms) => fmtHM(ms);
+
+  const timeToHM = (ts) => {
+    const d = new Date(ts);
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const hmToTsOnDay = (dayYmd, hm) => {
+    const [h,m] = hm.split(":").map(Number);
+    const d = parseYmd(dayYmd);
+    d.setHours(h, m, 0, 0);
+    return d.getTime();
+  };
+
+  // ---------- storage ----------
+  const STORAGE_KEY = "time-tracker-v7";
+  const loadState = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); } catch { return null; } };
+
+  let state = loadState() || {
+    days:{},           // YYYY-MM-DD -> [{start,stop}]
+    dayMeta:{},        // YYYY-MM-DD -> { type }
+    running:false,
+    startTs:null,
+    selectedDay: ymd(new Date()),
+    weekSummaries:[],  // {weekStart, weekEnd, istMs, sollMs, saldoMs}
+    monthSummaries:[], // {month, monthStart, monthEnd, istMs, sollMs, saldoMs}
+    lastFinalizedWeekStart:null,
+    lastFinalizedMonth:null,
+    settings:{
+      sollByDowMs: [
+        8*60*60*1000, // Mo
+        8*60*60*1000, // Di
+        8*60*60*1000, // Mi
+        8*60*60*1000, // Do
+        8*60*60*1000, // Fr
+        0,            // Sa
+        0             // So
+      ],
+      displayFormat: "decimal" // "hms" | "decimal"
+    }
+  };
+  const saveState = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+  // Backward compat
+  if (!state.settings) state.settings = {};
+  if (!state.settings.sollByDowMs) state.settings.sollByDowMs = [8*60*60*1000,8*60*60*1000,8*60*60*1000,8*60*60*1000,8*60*60*1000,0,0];
+  if (!state.settings.displayFormat) state.settings.displayFormat = "decimal";
+
+  // ---------- display formatting ----------
+  function fmtDuration(ms){
+    return state.settings.displayFormat === "decimal" ? fmtDecHours(ms) : fmtHMS(ms);
+  }
+  function fmtDurationSigned(ms){
+    const sign = ms >= 0 ? "+" : "-";
+    const abs = Math.abs(ms);
+    if (state.settings.displayFormat === "decimal") return sign + fmtDecHours(abs).replace(" h","") + " h";
+    return sign + fmtHMS(abs);
+  }
+  function fmtShort(ms){
+    // compact for calendar lines
+    if (state.settings.displayFormat === "decimal") return fmtDecHours(ms).replace(" h","").replace(",", ".");
+    return fmtHM(ms);
+  }
+
+  // ---------- business rules ----------
+  function dayType(dayYmd){
+    return state.dayMeta[dayYmd]?.type || "work";
+  }
+  function isTimeTrackingAllowed(dayYmd){
+    return dayType(dayYmd) === "work";
+  }
+
+  function dayIstMs(dayYmd){
+    let total = sumEntries(state.days[dayYmd] || []);
+    if (state.running && state.startTs) {
+      const startDay = ymd(new Date(state.startTs));
+      if (startDay === dayYmd) total += (Date.now() - state.startTs);
+    }
+    return total;
+  }
+
+  function daySollMs(dayYmd){
+    const d = parseYmd(dayYmd);
+    return state.settings.sollByDowMs[dowMon0(d)] || 0;
+  }
+
+  // User choices:
+  // Urlaub: 0, Gleitzeit: -Soll, Arbeit: Ist - Soll
+  function daySaldoMs(dayYmd){
+    const t = dayType(dayYmd);
+    const soll = daySollMs(dayYmd);
+    if (t === "vacation") return 0;
+    if (t === "glide") return -soll;
+    return dayIstMs(dayYmd) - soll;
+  }
+
+  function totalsForRange(fromYmd, toYmd){
+    let ist=0, soll=0, saldo=0;
+    const from = parseYmd(fromYmd), to = parseYmd(toYmd);
+    for (let d = new Date(from); d <= to; d.setDate(d.getDate()+1)) {
+      const k = ymd(d);
+      ist += dayIstMs(k);
+      soll += daySollMs(k);
+      saldo += daySaldoMs(k);
+    }
+    return {istMs:ist, sollMs:soll, saldoMs:saldo};
+  }
+
+  // ---------- auto finalize week/month ----------
+  function finalizeIfNeeded() {
+    const now = new Date();
+
+    const currentWeekStart = ymd(startOfWeek(now));
+    if (!state.lastFinalizedWeekStart) {
+      state.lastFinalizedWeekStart = currentWeekStart;
+    } else {
+      while (state.lastFinalizedWeekStart !== currentWeekStart) {
+        const ws = parseYmd(state.lastFinalizedWeekStart);
+        const we = endOfWeek(ws);
+        const wStart = ymd(ws), wEnd = ymd(we);
+        state.weekSummaries.push({ weekStart:wStart, weekEnd:wEnd, ...totalsForRange(wStart, wEnd) });
+        ws.setDate(ws.getDate()+7);
+        state.lastFinalizedWeekStart = ymd(ws);
+      }
+    }
+
+    const currentMonth = monthKey(now);
+    if (!state.lastFinalizedMonth) {
+      state.lastFinalizedMonth = currentMonth;
+    } else {
+      while (state.lastFinalizedMonth !== currentMonth) {
+        const [yy, mm] = state.lastFinalizedMonth.split("-").map(Number);
+        const ms = new Date(yy, mm-1, 1, 12, 0, 0, 0);
+        const me = new Date(yy, mm, 0, 12, 0, 0, 0);
+        const mStart = ymd(ms), mEnd = ymd(me);
+        state.monthSummaries.push({ month: state.lastFinalizedMonth, monthStart:mStart, monthEnd:mEnd, ...totalsForRange(mStart, mEnd) });
+        const next = new Date(yy, mm, 1, 12, 0, 0, 0);
+        state.lastFinalizedMonth = monthKey(next);
+      }
+    }
+
+    saveState();
+  }
+
+  // ---------- UI refs ----------
+  const $ = (id) => document.getElementById(id);
+
+  const timerEl = $("timer");
+  const statusEl = $("status");
+  const todayIstEl = $("todayIst");
+  const todaySollEl = $("todaySoll");
+  const todaySaldoEl = $("todaySaldo");
+
+  const selectedDayLabel = $("selectedDayLabel");
+  const dayTypeSel = $("dayType");
+  const entriesBody = $("entriesBody");
+  const lockHint = $("lockHint");
+
+  const startBtn = $("startBtn");
+  const pauseBtn = $("pauseBtn");
+  const stopBtn = $("stopBtn");
+
+  const exportBtn = $("exportBtn");
+  const resetBtn = $("resetBtn");
+  const settingsBtn = $("settingsBtn");
+  const displayBtn = $("displayBtn");
+
+  const calEl = $("calendar");
+  const monthLabelEl = $("monthLabel");
+  const prevMonthBtn = $("prevMonthBtn");
+  const nextMonthBtn = $("nextMonthBtn");
+
+  const lastWeekTotal = $("lastWeekTotal");
+  const lastWeekMeta = $("lastWeekMeta");
+  const lastMonthTotal = $("lastMonthTotal");
+  const lastMonthMeta = $("lastMonthMeta");
+  const summariesEl = $("summaries");
+  const showWeeksBtn = $("showWeeksBtn");
+  const showMonthsBtn = $("showMonthsBtn");
+
+  // Edit modal
+  const editModalBack = $("editModalBack");
+  const editModalDay = $("editModalDay");
+  const editStart = $("editStart");
+  const editStop = $("editStop");
+  const editError = $("editError");
+  const editCancelBtn = $("editCancelBtn");
+  const editSaveBtn = $("editSaveBtn");
+  let editCtx = null;
+
+  // Settings modal
+  const settingsBack = $("settingsBack");
+  const settingsCancel = $("settingsCancel");
+  const settingsSave = $("settingsSave");
+  const sollInputs = {
+    0: $("sollMo"), 1: $("sollDi"), 2: $("sollMi"), 3: $("sollDo"),
+    4: $("sollFr"), 5: $("sollSa"), 6: $("sollSo")
+  };
+
+  // Display modal
+  const displayBack = $("displayBack");
+  const displayCancel = $("displayCancel");
+  const displaySave = $("displaySave");
+  const fmtHmsRadio = $("fmtHms");
+  const fmtDecRadio = $("fmtDec");
+
+  let viewMonth = monthStart(new Date());
+  let tickHandle = null;
+
+  function getSelectedDay(){ return state.selectedDay || ymd(new Date()); }
+
+  // ---------- render ----------
+  function renderHeader(){
+    const today = ymd(new Date());
+    const allowedToday = isTimeTrackingAllowed(today);
+
+    statusEl.textContent = state.running ? "läuft" : (allowedToday ? "bereit" : "gesperrt");
+    startBtn.disabled = state.running || !allowedToday;
+    pauseBtn.disabled = !state.running || !allowedToday;
+    stopBtn.disabled  = !state.running || !allowedToday;
+
+    if (state.running && state.startTs) {
+      timerEl.textContent = fmtHMS(Date.now() - state.startTs); // live always HMS
+    } else {
+      const entries = state.days[today] || [];
+      const last = entries[entries.length - 1];
+      timerEl.textContent = fmtDuration(last ? (last.stop - last.start) : 0);
+    }
+
+    const ist = dayIstMs(today);
+    const soll = daySollMs(today);
+    const saldo = daySaldoMs(today);
+
+    todayIstEl.textContent = fmtDuration(ist);
+    todaySollEl.textContent = fmtDuration(soll);
+    todaySaldoEl.textContent = fmtDurationSigned(saldo);
+    todaySaldoEl.className = saldo>=0 ? "pos" : "neg";
+  }
+
+  function openEdit(dayYmd, index){
+    const arr = state.days[dayYmd] || [];
+    const e = arr[index];
+    if(!e) return;
+    editCtx = { dayYmd, index };
+    editModalDay.textContent = dayYmd;
+    editStart.value = timeToHM(e.start);
+    editStop.value = timeToHM(e.stop);
+    editError.style.display="none";
+    editModalBack.style.display="flex";
+  }
+  function closeEdit(){
+    editModalBack.style.display="none";
+    editCtx = null;
+  }
+
+  function renderEntries(){
+    const day = getSelectedDay();
+    selectedDayLabel.textContent = (day === ymd(new Date())) ? "heute" : day;
+    dayTypeSel.value = dayType(day);
+
+    const allowed = isTimeTrackingAllowed(day);
+    lockHint.style.display = allowed ? "none" : "inline";
+
+    const arr = state.days[day] || [];
+    entriesBody.innerHTML = "";
+
+    arr.slice().reverse().forEach((e, rev) => {
+      const idx = arr.length - 1 - rev;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${fmtTime(new Date(e.start))}</td>
+        <td>${fmtTime(new Date(e.stop))}</td>
+        <td class="right"><strong>${fmtDuration(e.stop - e.start)}</strong></td>
+        <td class="right actionsCol">
+          <button class="ghost smallbtn" data-act="edit" data-idx="${idx}">✏️</button>
+          <button class="ghost smallbtn danger" data-act="del" data-idx="${idx}">🗑</button>
+        </td>
+      `;
+      entriesBody.appendChild(tr);
+    });
+
+    // bind actions
+    entriesBody.querySelectorAll("button[data-act]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const act = btn.getAttribute("data-act");
+        const idx = Number(btn.getAttribute("data-idx"));
+        const dayYmd = getSelectedDay();
+
+        if (act === "edit") {
+          openEdit(dayYmd, idx);
+          return;
+        }
+
+        if (act === "del") {
+          const arr = state.days[dayYmd] || [];
+          const e = arr[idx];
+          if(!e) return;
+          if(!confirm(`Eintrag löschen?\n${fmtTime(new Date(e.start))} – ${fmtTime(new Date(e.stop))}`)) return;
+          arr.splice(idx,1);
+          if(arr.length===0) delete state.days[dayYmd];
+          saveState();
+          renderAll();
+        }
+      });
+    });
+  }
+
+  function renderCalendar(){
+    const y = viewMonth.getFullYear();
+    const m = viewMonth.getMonth();
+    const ms = new Date(y, m, 1, 12, 0, 0, 0);
+    const me = new Date(y, m+1, 0, 12, 0, 0, 0);
+
+    const monthNames = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+    monthLabelEl.textContent = `${monthNames[m]} ${y}`;
+
+    calEl.innerHTML = "";
+    ["Mo","Di","Mi","Do","Fr","Sa","So"].forEach(d=>{
+      const div=document.createElement("div");
+      div.className="dow";
+      div.textContent=d;
+      calEl.appendChild(div);
+    });
+
+    const gridStart = startOfWeek(ms);
+    const gridEnd = endOfWeek(me);
+
+    for(let d=new Date(gridStart); d<=gridEnd; d.setDate(d.getDate()+1)){
+      const k = ymd(d);
+      const inMonth = d.getMonth()===m;
+
+      const div=document.createElement("div");
+      div.className="day"+(inMonth?"":" out");
+      if(k===getSelectedDay()) div.style.outline="2px solid rgba(124,255,107,.7)";
+
+      const ist = dayIstMs(k);
+      const soll = daySollMs(k);
+      const saldo = daySaldoMs(k);
+      const typ = dayType(k);
+
+      let badge = "";
+      if(typ==="vacation") badge = `<span class="badge u">U</span>`;
+      if(typ==="glide") badge = `<span class="badge g">GZ</span>`;
+
+      div.innerHTML = `
+        <div class="n"><span>${d.getDate()}</span>${badge}</div>
+        <div class="t">Ist ${fmtShort(ist)} / Soll ${fmtShort(soll)}</div>
+        <div class="t ${saldo>=0?"pos":"neg"}">Saldo ${(saldo>=0?"+":"-")}${fmtShort(Math.abs(saldo))}</div>
+      `;
+
+      div.addEventListener("click", ()=>{
+        state.selectedDay = k;
+        saveState();
+        renderAll();
+      });
+
+      calEl.appendChild(div);
+    }
+  }
+
+  function renderSummaries(kind="last"){
+    const w = state.weekSummaries[state.weekSummaries.length-1];
+    if(w){
+      lastWeekTotal.textContent = fmtDuration(w.istMs);
+      lastWeekMeta.innerHTML =
+        `${w.weekStart} – ${w.weekEnd}<br><span class="muted small">Soll ${fmtDuration(w.sollMs)} • Saldo <span class="${w.saldoMs>=0?"pos":"neg"}">${fmtDurationSigned(w.saldoMs)}</span></span>`;
+    } else {
+      lastWeekTotal.textContent="—"; lastWeekMeta.textContent="—";
+    }
+
+    const mo = state.monthSummaries[state.monthSummaries.length-1];
+    if(mo){
+      lastMonthTotal.textContent = fmtDuration(mo.istMs);
+      lastMonthMeta.innerHTML =
+        `${mo.monthStart} – ${mo.monthEnd}<br><span class="muted small">Soll ${fmtDuration(mo.sollMs)} • Saldo <span class="${mo.saldoMs>=0?"pos":"neg"}">${fmtDurationSigned(mo.saldoMs)}</span></span>`;
+    } else {
+      lastMonthTotal.textContent="—"; lastMonthMeta.textContent="—";
+    }
+
+    summariesEl.innerHTML="";
+    if(kind==="weeks"){
+      summariesEl.innerHTML = `<div class="muted" style="margin-bottom:6px">Wochenübersichten (Ist / Soll / Saldo)</div>`;
+      const t=document.createElement("table");
+      t.innerHTML=`<thead><tr><th>Woche</th><th class="right">Ist</th><th class="right">Soll</th><th class="right">Saldo</th></tr></thead><tbody></tbody>`;
+      const tb=t.querySelector("tbody");
+      state.weekSummaries.slice().reverse().forEach(it=>{
+        const tr=document.createElement("tr");
+        tr.innerHTML=`<td>${it.weekStart} – ${it.weekEnd}</td>
+                      <td class="right"><strong>${fmtDuration(it.istMs)}</strong></td>
+                      <td class="right">${fmtDuration(it.sollMs)}</td>
+                      <td class="right"><strong class="${it.saldoMs>=0?"pos":"neg"}">${fmtDurationSigned(it.saldoMs)}</strong></td>`;
+        tb.appendChild(tr);
+      });
+      summariesEl.appendChild(t);
+    }
+    if(kind==="months"){
+      summariesEl.innerHTML = `<div class="muted" style="margin-bottom:6px">Monatsübersichten (Ist / Soll / Saldo)</div>`;
+      const t=document.createElement("table");
+      t.innerHTML=`<thead><tr><th>Monat</th><th class="right">Ist</th><th class="right">Soll</th><th class="right">Saldo</th></tr></thead><tbody></tbody>`;
+      const tb=t.querySelector("tbody");
+      state.monthSummaries.slice().reverse().forEach(it=>{
+        const tr=document.createElement("tr");
+        tr.innerHTML=`<td>${it.month}</td>
+                      <td class="right"><strong>${fmtDuration(it.istMs)}</strong></td>
+                      <td class="right">${fmtDuration(it.sollMs)}</td>
+                      <td class="right"><strong class="${it.saldoMs>=0?"pos":"neg"}">${fmtDurationSigned(it.saldoMs)}</strong></td>`;
+        tb.appendChild(tr);
+      });
+      summariesEl.appendChild(t);
+    }
+  }
+
+  function startTick(){
+    stopTick();
+    tickHandle=setInterval(()=>{
+      if(state.running && state.startTs){
+        timerEl.textContent = fmtHMS(Date.now()-state.startTs);
+        renderHeader();
+        renderCalendar();
+      }
+    },250);
+  }
+  function stopTick(){ if(tickHandle) clearInterval(tickHandle); tickHandle=null; }
+
+  function renderAll(){
+    renderHeader();
+    renderEntries();
+    renderCalendar();
+    renderSummaries();
+  }
+
+  // ---------- actions ----------
+  startBtn.addEventListener("click", ()=>{
+    const today = ymd(new Date());
+    if(!isTimeTrackingAllowed(today)) return;
+    if(state.running) return;
+    state.running=true;
+    state.startTs=Date.now();
+    saveState();
+    renderAll();
+    startTick();
+  });
+
+  pauseBtn.addEventListener("click", ()=>{
+    const today = ymd(new Date());
+    if(!isTimeTrackingAllowed(today)) return;
+    if(!state.running || !state.startTs) return;
+    const start=state.startTs, stop=Date.now();
+    const k=ymd(new Date(start));
+    state.days[k]=state.days[k]||[];
+    state.days[k].push({start,stop});
+    state.running=false; state.startTs=null;
+    saveState();
+    stopTick();
+    renderAll();
+  });
+
+  stopBtn.addEventListener("click", ()=>{
+    const today = ymd(new Date());
+    if(!isTimeTrackingAllowed(today)) return;
+    if(state.running && state.startTs){
+      const start=state.startTs, stop=Date.now();
+      const k=ymd(new Date(start));
+      state.days[k]=state.days[k]||[];
+      state.days[k].push({start,stop});
+    }
+    state.running=false; state.startTs=null;
+    saveState();
+    stopTick();
+    renderAll();
+  });
+
+  dayTypeSel.addEventListener("change", ()=>{
+    const day = getSelectedDay();
+    state.dayMeta[day] = state.dayMeta[day] || {};
+    state.dayMeta[day].type = dayTypeSel.value;
+
+    const today = ymd(new Date());
+    if (day === today && !isTimeTrackingAllowed(day)) {
+      state.running = false;
+      state.startTs = null;
+      stopTick();
+    }
+
+    saveState();
+    renderAll();
+  });
+
+  // edit modal actions
+  editCancelBtn.addEventListener("click", closeEdit);
+  editModalBack.addEventListener("click", (e)=>{ if(e.target===editModalBack) closeEdit(); });
+  editSaveBtn.addEventListener("click", ()=>{
+    if(!editCtx) return;
+    const {dayYmd, index} = editCtx;
+    const s = editStart.value, t = editStop.value;
+
+    if(!s || !t){
+      editError.textContent="Bitte Start und Ende setzen.";
+      editError.style.display="block";
+      return;
+    }
+
+    const start = hmToTsOnDay(dayYmd, s);
+    const stop  = hmToTsOnDay(dayYmd, t);
+
+    if(stop<=start){
+      editError.textContent="Ende muss nach Start liegen.";
+      editError.style.display="block";
+      return;
+    }
+
+    const arr = state.days[dayYmd] || [];
+    if(!arr[index]) return;
+    arr[index] = {start, stop};
+    arr.sort((a,b)=>a.start-b.start);
+
+    saveState();
+    closeEdit();
+    renderAll();
+  });
+
+  // settings modal
+  function openSettings(){
+    for(let i=0;i<7;i++){
+      sollInputs[i].value = msToHM(state.settings.sollByDowMs[i]||0);
+    }
+    settingsBack.style.display="flex";
+  }
+  function closeSettings(){ settingsBack.style.display="none"; }
+
+  settingsBtn.addEventListener("click", openSettings);
+  settingsCancel.addEventListener("click", closeSettings);
+  settingsBack.addEventListener("click",(e)=>{ if(e.target===settingsBack) closeSettings(); });
+  settingsSave.addEventListener("click", ()=>{
+    const arr = [];
+    for(let i=0;i<7;i++){
+      const v = sollInputs[i].value || "00:00";
+      arr[i] = hmToMs(v);
+    }
+    state.settings.sollByDowMs = arr;
+    saveState();
+    closeSettings();
+    renderAll();
+  });
+
+  // display format modal
+  function openDisplay(){
+    fmtHmsRadio.checked = state.settings.displayFormat === "hms";
+    fmtDecRadio.checked = state.settings.displayFormat === "decimal";
+    displayBack.style.display="flex";
+  }
+  function closeDisplay(){ displayBack.style.display="none"; }
+
+  displayBtn.addEventListener("click", openDisplay);
+  displayCancel.addEventListener("click", closeDisplay);
+  displayBack.addEventListener("click",(e)=>{ if(e.target===displayBack) closeDisplay(); });
+  displaySave.addEventListener("click", ()=>{
+    state.settings.displayFormat = fmtHmsRadio.checked ? "hms" : "decimal";
+    saveState();
+    closeDisplay();
+    renderAll();
+  });
+
+  // export
+  exportBtn.addEventListener("click", ()=>{
+    const rows = [["Datum","Typ","Start","Ende","Dauer","Tages-Ist","Tages-Soll","Tages-Saldo"]];
+    const days = Array.from(new Set([
+      ...Object.keys(state.days),
+      ...Object.keys(state.dayMeta)
+    ])).sort();
+
+    for (const d of days) {
+      const typ = dayType(d);
+      const ist = dayIstMs(d);
+      const soll = daySollMs(d);
+      const saldo = daySaldoMs(d);
+
+      const entries = state.days[d] || [];
+      if(entries.length===0){
+        rows.push([d, typ, "", "", "", fmtDuration(ist), fmtDuration(soll), fmtDurationSigned(saldo)]);
+      } else {
+        entries.forEach((e, idx)=>{
+          const sd=new Date(e.start), ed=new Date(e.stop);
+          rows.push([d, typ, fmtTime(sd), fmtTime(ed), fmtDuration(e.stop-e.start),
+                     idx===0?fmtDuration(ist):"", idx===0?fmtDuration(soll):"", idx===0?fmtDurationSigned(saldo):""]);
+        });
+      }
+    }
+
+    const csv = rows.map(r => r.map(v => `"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "arbeitszeiten.csv"; a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // reset
+  resetBtn.addEventListener("click", ()=>{
+    localStorage.removeItem(STORAGE_KEY);
+    location.reload();
+  });
+
+  // calendar nav
+  prevMonthBtn.addEventListener("click", ()=>{
+    viewMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth()-1, 1, 12,0,0,0);
+    renderCalendar();
+  });
+  nextMonthBtn.addEventListener("click", ()=>{
+    viewMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth()+1, 1, 12,0,0,0);
+    renderCalendar();
+  });
+
+  showWeeksBtn.addEventListener("click", ()=>renderSummaries("weeks"));
+  showMonthsBtn.addEventListener("click", ()=>renderSummaries("months"));
+
+  // ---------- init ----------
+  function init(){
+    finalizeIfNeeded();
+    viewMonth = monthStart(new Date());
+    renderAll();
+    if(state.running && state.startTs) startTick();
+    if("serviceWorker" in navigator){
+      navigator.serviceWorker.register("./service-worker.js").catch(()=>{});
+    }
+  }
+  init();
+})();
+</script>
+</body>
+</html>
